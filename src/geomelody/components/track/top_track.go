@@ -2,10 +2,13 @@ package track
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +16,7 @@ import (
 	"geomelody/constants"
 	"geomelody/utils"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -73,6 +77,8 @@ type RegionalTopTrackResponse struct {
 	TrackSuggestion []TrackSuggestion
 }
 
+var countriesMap map[string]string
+
 type MusicMixSearchResponse struct {
 	HasTranslation bool   `json:"has_translation"`
 	HasLyrics      bool   `json:"has_lyrics"`
@@ -96,7 +102,12 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 			Status: http.StatusBadRequest,
 			Error:  err,
 		}
+
 		return nil, err
+	}
+
+	if isRespInCache(form, ttc.RedisConn, resp) {
+		return resp, nil
 	}
 
 	if data, err = fetchRegionalTopTrackData(ttc.ReqCtx, form.Country); err != nil {
@@ -115,7 +126,42 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 		ttc.SetComponentAppError(http.StatusInternalServerError, err)
 	}
 
+	checkAndCacheResp(form, ttc.RedisConn, resp)
+
 	return resp, err
+}
+
+func isRespInCache(form *RegionalTopTrackForm, redisConn redis.Conn, resp *RegionalTopTrackResponse) bool {
+	if form.UseCache {
+		dataStr, err := utils.RedisGetData(redisConn, form.Country)
+		if err != nil {
+			log.Printf("data not found in cache")
+		} else if dataBytes, err := base64.StdEncoding.DecodeString(dataStr); err != nil {
+			log.Printf("error while decoding base64 cache data")
+		} else if err := json.Unmarshal(dataBytes, resp); err != nil {
+			log.Printf("error unmarshaling cache data")
+		} else {
+			log.Printf("data found in cache")
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkAndCacheResp(form *RegionalTopTrackForm, redisConn redis.Conn, resp *RegionalTopTrackResponse) {
+	if form.UseCache {
+		if respBytes, err := json.Marshal(resp); err != nil {
+			log.Printf("error marshaling data to store in cache")
+		} else if respStr := base64.StdEncoding.EncodeToString(respBytes); respStr != "" {
+			ttl, _ := strconv.Atoi(constants.REDIS_DEFAULT_EXPIRY)
+			if status, err := utils.RedisSetData(redisConn, form.Country, respStr, ttl); err != nil || status {
+				log.Printf("error setting data in cache")
+			} else {
+				log.Printf("data succesfully stored in cache")
+			}
+		}
+	}
 }
 
 // fetchRegionalTopTrackData is used to fetch top track of the given country from LAST API.
@@ -279,6 +325,7 @@ func processTrackIDData(data utils.Data, mms *MusicMixSearchResponse) error {
 			hasLyrics := int(track["has_lyrics"].(float64))
 			if hasLyrics == 0 {
 				mms.HasLyrics = false
+				log.Printf("lyrics not present for the track")
 				return nil
 			} else {
 				mms.HasLyrics = true
@@ -320,12 +367,12 @@ func checkForTranslation(track map[string]interface{}, mms *MusicMixSearchRespon
 	}
 }
 
-func fetchLyrics(reqCtx context.Context, trackID, commomTrackID string) (utils.Data, error) {
+func fetchLyrics(reqCtx context.Context, trackID, commonTrackID string) (utils.Data, error) {
 	url := fmt.Sprintf("%vtrack.lyrics.get", constants.MUSIC_MIX_URL)
 	reqHeaders := map[string]string{"Content-Type": "application/json"}
 	params := map[string]string{
 		"track_id":       trackID,
-		"commontrack_id": commomTrackID,
+		"commontrack_id": commonTrackID,
 		"apikey":         constants.MUSIC_MIX_API_KEY,
 		"page_size":      "1",
 	}
@@ -445,6 +492,22 @@ func (f *RegionalTopTrackForm) Valid() error {
 	errMsg := ""
 	if f.Country == "" {
 		errMsg += "`country` parameter is invalid"
+	} else {
+		countriesStr, err := os.ReadFile(constants.COUNTRIES_JSON_FILE_NAME)
+		if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal(countriesStr, &countriesMap)
+		if err != nil {
+			return err
+		}
+
+		if country, ok := countriesMap[strings.ToLower(f.Country)]; ok {
+			f.Country = country
+		} else {
+			errMsg += "`country` not found in our database. Please check the country input param, it should follow the ISO 3166-1-Alpha-2 code"
+		}
 	}
 
 	if f.UseCache != true && f.UseCache != false {

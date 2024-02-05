@@ -14,6 +14,12 @@ var (
 
 	MUSIC_MIX_URL     = ""
 	MUSIC_MIX_API_KEY = ""
+
+	COUNTRIES_JSON_FILE_NAME = ""
+
+	REDIS_HOST           = ""
+	REDIS_PORT           = ""
+	REDIS_DEFAULT_EXPIRY = ""
 )
 
 func InitConstantsVars() {
@@ -22,4 +28,10 @@ func InitConstantsVars() {
 
 	MUSIC_MIX_URL = os.Getenv("MUSIC_MIX_URL")
 	MUSIC_MIX_API_KEY = os.Getenv("MUSIC_MIX_API_KEY")
+
+	COUNTRIES_JSON_FILE_NAME = os.Getenv("COUNTRIES_JSON_FILE_NAME")
+
+	REDIS_HOST = os.Getenv("REDIS_HOST")
+	REDIS_PORT = os.Getenv("REDIS_PORT")
+	REDIS_DEFAULT_EXPIRY = os.Getenv("REDIS_DEFAULT_EXPIRY")
 }

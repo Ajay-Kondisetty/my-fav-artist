@@ -12,6 +12,7 @@ import (
 	"geomelody/utils"
 
 	"github.com/beego/beego/v2/server/web"
+	"github.com/gomodule/redigo/redis"
 )
 
 type Preparer interface {
@@ -20,13 +21,20 @@ type Preparer interface {
 
 type BaseController struct {
 	web.Controller
-	ReqCtx context.Context
+	ReqCtx    context.Context
+	RedisConn redis.Conn
 }
 
 // Prepare is called before the http action is processes, to initialize.
 func (c *BaseController) Prepare() {
 	requestCtx := c.Ctx.Request.Context()
 	c.ReqCtx = requestCtx
+	conn, err := utils.RedisConn()
+	if err != nil {
+		c.Error(err)
+	} else {
+		c.RedisConn = conn
+	}
 
 	if app, ok := c.AppController.(Preparer); !ok {
 		// do nothing
@@ -35,6 +43,16 @@ func (c *BaseController) Prepare() {
 	} else {
 		app.UpdateComponent(component)
 	}
+}
+
+// Finish is called after the http action is processed, to clean-up
+func (c *BaseController) Finish() {
+	defer func(RedisConn redis.Conn) {
+		err := RedisConn.Close()
+		if err != nil {
+			log.Printf("error closing redis connection")
+		}
+	}(c.RedisConn)
 }
 
 // InitComponent initializes the component whose methods needs to be called.
@@ -50,8 +68,9 @@ func (c *BaseController) InitComponent() (interface{}, error) {
 	}
 
 	base := &components.BaseComponent{
-		ReqCtx:   c.ReqCtx,
-		AppError: new(utils.AppError),
+		ReqCtx:    c.ReqCtx,
+		AppError:  new(utils.AppError),
+		RedisConn: c.RedisConn,
 	}
 
 	return componentFn(base), nil

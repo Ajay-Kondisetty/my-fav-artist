@@ -3,7 +3,8 @@ module geomelody
 go 1.21.6
 
 require (
-	github.com/beego/beego/v2 v2.1.5
+	github.com/beego/beego/v2 v2.1.6
+	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/joho/godotenv v1.5.1
 	github.com/microcosm-cc/bluemonday v1.0.26
 	golang.org/x/net v0.20.0
@@ -18,7 +19,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.18.0 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
