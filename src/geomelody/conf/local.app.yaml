@@ -1,0 +1,8 @@
+AppName: "geomelody"
+ServiceName: "Geo Melody"
+HTTPPort: 8080
+RunMode: "dev"
+AutoRender: false
+CopyRequestBody: true
+EnableDocs: true
+HTTPAddr:
