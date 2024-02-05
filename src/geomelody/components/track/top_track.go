@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,6 +29,19 @@ type TopTrack interface {
 type RegionalTopTrackForm struct {
 	Country  string `json:"country"`
 	UseCache bool   `json:"use_cache"`
+}
+
+type TrackSuggestion struct {
+	Name      string  `json:"name"`
+	Match     float64 `json:"match"`
+	Duration  float64 `json:"duration"`
+	PlayCount float64 `json:"playCount"`
+	URL       string  `json:"url"`
+
+	ArtistInfo struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"artist_info"`
 }
 
 type RegionalTopTrackResponse struct {
@@ -55,6 +69,8 @@ type RegionalTopTrackResponse struct {
 
 		Lyrics string `json:"lyrics"`
 	} `json:"track"`
+
+	TrackSuggestion []TrackSuggestion
 }
 
 type MusicMixSearchResponse struct {
@@ -93,6 +109,10 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 		ttc.SetComponentAppError(http.StatusInternalServerError, err)
 	} else if err = fetchTrackLyrics(ttc.ReqCtx, resp); err != nil {
 		ttc.SetComponentAppError(http.StatusInternalServerError, err)
+	} else if data, err = fetchTrackSuggestions(ttc.ReqCtx, resp.Track.Name, resp.Track.ArtistsInfo.Name); err != nil {
+		ttc.SetComponentAppError(http.StatusInternalServerError, err)
+	} else if err = processTrackSuggestionsData(data, resp); err != nil {
+		ttc.SetComponentAppError(http.StatusInternalServerError, err)
 	}
 
 	return resp, err
@@ -116,6 +136,8 @@ func fetchRegionalTopTrackData(reqCtx context.Context, country string) (utils.Da
 		return nil, err
 	}
 	caMap, _ := data.(map[string]interface{})
+
+	log.Printf("fetched regional track data")
 
 	return caMap, nil
 }
@@ -145,10 +167,12 @@ func processRegionalTrackData(data utils.Data, rttr *RegionalTopTrackResponse) e
 			return errors.New("error while processing track vendor API data")
 		}
 
+		log.Printf("processed regional track data")
+
 		return nil
 	}
 
-	return errors.New("received empty tracks data from vendor API. Please check input params")
+	return errors.New("received empty track data from vendor API. Please check input params")
 }
 
 func fetchArtistInfo(reqCtx context.Context, artist string) (utils.Data, error) {
@@ -168,6 +192,8 @@ func fetchArtistInfo(reqCtx context.Context, artist string) (utils.Data, error) 
 	}
 	caMap, _ := data.(map[string]interface{})
 
+	log.Printf("fetched artist data")
+
 	return caMap, nil
 }
 
@@ -185,9 +211,13 @@ func processArtistInfo(data utils.Data, rttr *RegionalTopTrackResponse) error {
 
 			summary := strings.Replace(ar["bio"].(map[string]interface{})["summary"].(string), "\n", ". ", -1)
 			rttr.Track.ArtistsInfo.Summary = summary
+
+			log.Printf("processed artist data")
 		} else {
 			return errors.New("error while processing artist vendor API data")
 		}
+	} else {
+		log.Printf("received empty artist data")
 	}
 
 	return nil
@@ -235,6 +265,8 @@ func fetchTrackID(reqCtx context.Context, artist, track string) (utils.Data, err
 	}
 	caMap, _ := data.(map[string]interface{})
 
+	log.Printf("fetched track ID data")
+
 	return caMap, nil
 }
 
@@ -259,6 +291,10 @@ func processTrackIDData(data utils.Data, mms *MusicMixSearchResponse) error {
 			mms.AlbumName = track["album_name"].(string)
 
 			checkForTranslation(track, mms)
+
+			log.Printf("processed track ID data")
+		} else {
+			log.Printf("received more than one track ID data, hence not processed")
 		}
 	} else {
 		return errors.New("error while processing track ID vendor API data")
@@ -277,6 +313,7 @@ func checkForTranslation(track map[string]interface{}, mms *MusicMixSearchRespon
 				mms.HasTranslation = true
 				mms.TrackName = transVal["translation"].(string)
 				mms.ArtistName = track["artist_name"].(string)
+				log.Printf("found and processed translated data")
 				break
 			}
 		}
@@ -299,6 +336,8 @@ func fetchLyrics(reqCtx context.Context, trackID, commomTrackID string) (utils.D
 	}
 	caMap, _ := data.(map[string]interface{})
 
+	log.Printf("fetched lyrics data")
+
 	return caMap, nil
 }
 
@@ -310,8 +349,73 @@ func processLyricsData(data utils.Data, rttr *RegionalTopTrackResponse) error {
 		lyric = strings.Replace(lyric, "******* This Lyrics is NOT for Commercial use *******", "", -1)
 		lyric = strings.Replace(lyric, "\n", ". ", -1)
 		rttr.Track.Lyrics = lyric
+
+		log.Printf("processed lyrics data")
 	} else {
 		return errors.New("error while processing lyrics vendor API data")
+	}
+
+	return nil
+}
+
+func fetchTrackSuggestions(reqCtx context.Context, track, artist string) (utils.Data, error) {
+	url := fmt.Sprintf("%v", constants.LAST_API_URL)
+	reqHeaders := map[string]string{"Content-Type": "application/json"}
+	params := map[string]string{
+		"method":  "track.getsimilar",
+		"artist":  artist,
+		"track":   track,
+		"api_key": constants.LAST_API_KEY,
+		"format":  "json",
+		"limit":   "5",
+	}
+	var data interface{}
+	var err error
+	if data, err = utils.GetAPIResponse(reqCtx, "GetTrackSuggestions", url, http.MethodGet, nil, params, reqHeaders); err != nil {
+		return nil, err
+	}
+	caMap, _ := data.(map[string]interface{})
+
+	log.Printf("fetched track suggestions data")
+
+	return caMap, nil
+}
+
+func processTrackSuggestionsData(data utils.Data, rttr *RegionalTopTrackResponse) error {
+	if st, ok := data["similartracks"]; ok {
+		if similarTracks, ok := st.(map[string]interface{}); ok {
+			tracks := similarTracks["track"].([]interface{})
+			rttr.TrackSuggestion = make([]TrackSuggestion, 0)
+			if len(tracks) == 0 {
+				log.Printf("received empty track suggestions data")
+
+				return nil
+			}
+			for _, track := range tracks {
+				val := track.(map[string]interface{})
+				trackSuggestion := new(TrackSuggestion)
+
+				trackSuggestion.Name = val["name"].(string)
+				trackSuggestion.URL = val["url"].(string)
+				trackSuggestion.Match = val["match"].(float64)
+				trackSuggestion.Duration = val["duration"].(float64)
+
+				trackSuggestion.PlayCount = val["playcount"].(float64)
+
+				artist := val["artist"].(map[string]interface{})
+
+				trackSuggestion.ArtistInfo.Name = artist["name"].(string)
+				trackSuggestion.ArtistInfo.URL = artist["url"].(string)
+
+				rttr.TrackSuggestion = append(rttr.TrackSuggestion, *trackSuggestion)
+			}
+
+			log.Printf("processed track suggestions data")
+		} else {
+			return errors.New("error while processing track vendor API data")
+		}
+	} else {
+		log.Printf("received empty track suggestions data")
 	}
 
 	return nil

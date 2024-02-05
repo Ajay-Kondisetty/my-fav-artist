@@ -1,14 +1,14 @@
 package main
 
 import (
-	"geomelody/constants"
-	"github.com/joho/godotenv"
 	"log"
 
+	"geomelody/constants"
 	"geomelody/routers"
 
 	_ "github.com/beego/beego/v2/core/config/yaml"
 	"github.com/beego/beego/v2/server/web"
+	"github.com/joho/godotenv"
 )
 
 func main() {

@@ -1,6 +1,8 @@
 package constants
 
-import "os"
+import (
+	"os"
+)
 
 const (
 	API_PATH = "api/v1/geomelody"
