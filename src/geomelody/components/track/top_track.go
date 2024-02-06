@@ -124,9 +124,9 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 		ttc.SetComponentAppError(http.StatusInternalServerError, err)
 	} else if err = processTrackSuggestionsData(data, resp); err != nil {
 		ttc.SetComponentAppError(http.StatusInternalServerError, err)
+	} else {
+		checkAndCacheResp(form, ttc.RedisConn, resp)
 	}
-
-	checkAndCacheResp(form, ttc.RedisConn, resp)
 
 	return resp, err
 }
@@ -190,25 +190,38 @@ func fetchRegionalTopTrackData(reqCtx context.Context, country string) (utils.Da
 
 func processRegionalTrackData(data utils.Data, rttr *RegionalTopTrackResponse) error {
 	if tr, ok := data["tracks"]; ok {
-		if tracks, ok := tr.(map[string]interface{}); ok {
-			attr := tracks["@attr"].(map[string]interface{})
-			rttr.Meta.Country = attr["country"].(string)
+		if tempTracks, ok := tr.(map[string]interface{}); ok {
+			if attr, ok := tempTracks["@attr"].(map[string]interface{}); ok {
+				rttr.Meta.Country, _ = attr["country"].(string)
+			}
 
-			track := tracks["track"].([]interface{})[0].(map[string]interface{})
-			rttr.Track.Name = track["name"].(string)
-			rttr.Track.Duration = track["duration"].(string)
+			tracks := tempTracks["track"].([]interface{})
 
-			listeners, _ := strconv.Atoi(track["listeners"].(string))
-			rttr.Track.Listeners = listeners
+			if len(tracks) > 0 {
+				track, ok := tracks[0].(map[string]interface{})
+				if !ok {
+					return errors.New("error while processing track vendor API data")
+				}
+				rttr.Track.Name, _ = track["name"].(string)
+				rttr.Track.Duration, _ = track["duration"].(string)
 
-			rttr.Track.URL = track["url"].(string)
+				tempListeners, _ := track["listeners"].(string)
+				listeners, _ := strconv.Atoi(tempListeners)
+				rttr.Track.Listeners = listeners
 
-			rank, _ := strconv.Atoi(track["@attr"].(map[string]interface{})["rank"].(string))
-			rttr.Track.Rank = rank + 1
+				rttr.Track.URL, _ = track["url"].(string)
 
-			artist := track["artist"].(map[string]interface{})
-			rttr.Track.ArtistsInfo.Name = artist["name"].(string)
-			rttr.Track.ArtistsInfo.URL = artist["url"].(string)
+				tempRank, _ := track["@attr"].(map[string]interface{})["rank"].(string)
+				rank, _ := strconv.Atoi(tempRank)
+				rttr.Track.Rank = rank + 1
+
+				if artist, ok := track["artist"].(map[string]interface{}); ok {
+					rttr.Track.ArtistsInfo.Name, _ = artist["name"].(string)
+					rttr.Track.ArtistsInfo.URL, _ = artist["url"].(string)
+				}
+			} else {
+				return errors.New("received empty track data from vendor API. Please check input params")
+			}
 		} else {
 			return errors.New("error while processing track vendor API data")
 		}
@@ -246,16 +259,29 @@ func fetchArtistInfo(reqCtx context.Context, artist string) (utils.Data, error) 
 func processArtistInfo(data utils.Data, rttr *RegionalTopTrackResponse) error {
 	if artist, ok := data["artist"]; ok {
 		if ar, ok := artist.(map[string]interface{}); ok {
-			rttr.Track.ArtistsInfo.Images = ar["image"].([]interface{})
+			rttr.Track.ArtistsInfo.Images, _ = ar["image"].([]interface{})
 
-			stats := ar["stats"].(map[string]interface{})
-			playCount, _ := strconv.Atoi(stats["playcount"].(string))
+			stats, ok := ar["stats"].(map[string]interface{})
+			if !ok {
+				return errors.New("error while processing artist vendor API data")
+			}
+
+			tempPlayCount, _ := stats["playcount"].(string)
+			playCount, _ := strconv.Atoi(tempPlayCount)
 			rttr.Track.ArtistsInfo.Stats.PlayCount = playCount
 
-			listeners, _ := strconv.Atoi(stats["listeners"].(string))
+			tempListeners, _ := stats["listeners"].(string)
+			listeners, _ := strconv.Atoi(tempListeners)
 			rttr.Track.ArtistsInfo.Stats.Listeners = listeners
 
-			summary := strings.Replace(ar["bio"].(map[string]interface{})["summary"].(string), "\n", ". ", -1)
+			bio, ok := ar["bio"].(map[string]interface{})
+			if !ok {
+				return errors.New("error while processing artist vendor API data")
+			}
+
+			tempSummary, _ := bio["summary"].(string)
+
+			summary := strings.Replace(tempSummary, "\n", ". ", -1)
 			rttr.Track.ArtistsInfo.Summary = summary
 
 			log.Printf("processed artist data")
@@ -331,11 +357,19 @@ func processTrackIDData(data utils.Data, mms *MusicMixSearchResponse) error {
 				mms.HasLyrics = true
 			}
 
-			mms.TrackID = int(track["track_id"].(float64))
-			mms.CommonTrackID = int(track["commontrack_id"].(float64))
-			mms.ArtistID = int(track["artist_id"].(float64))
-			mms.AlbumID = int(track["album_id"].(float64))
-			mms.AlbumName = track["album_name"].(string)
+			trackID, _ := track["track_id"].(float64)
+			mms.TrackID = int(trackID)
+
+			commonTrackId, _ := track["commontrack_id"].(float64)
+			mms.CommonTrackID = int(commonTrackId)
+
+			artistID, _ := track["artist_id"].(float64)
+			mms.ArtistID = int(artistID)
+
+			albumID, _ := track["album_id"].(float64)
+			mms.AlbumID = int(albumID)
+
+			mms.AlbumName, _ = track["album_name"].(string)
 
 			checkForTranslation(track, mms)
 
@@ -352,10 +386,18 @@ func processTrackIDData(data utils.Data, mms *MusicMixSearchResponse) error {
 
 func checkForTranslation(track map[string]interface{}, mms *MusicMixSearchResponse) {
 	if hasTranslation, ok := track["track_name_translation_list"]; ok {
-		translations := hasTranslation.([]interface{})
+		translations, _ := hasTranslation.([]interface{})
 		for _, translation := range translations {
-			val := translation.(map[string]interface{})
-			transVal := val["track_name_translation"].(map[string]interface{})
+			val, ok := translation.(map[string]interface{})
+			if !ok {
+				return
+			}
+
+			transVal, ok := val["track_name_translation"].(map[string]interface{})
+			if !ok {
+				return
+			}
+
 			if transVal["language"].(string) == "EN" {
 				mms.HasTranslation = true
 				mms.TrackName = transVal["translation"].(string)
@@ -390,14 +432,19 @@ func fetchLyrics(reqCtx context.Context, trackID, commonTrackID string) (utils.D
 
 func processLyricsData(data utils.Data, rttr *RegionalTopTrackResponse) error {
 	if out, ok := data["message"].(map[string]interface{}); ok {
-		lyrics := out["body"].(map[string]interface{})["lyrics"].(map[string]interface{})
+		if body, _ := out["body"].(map[string]interface{}); ok {
+			lyrics, ok := body["lyrics"].(map[string]interface{})
+			if !ok {
+				return errors.New("error while processing lyrics vendor API data")
+			}
 
-		lyric := lyrics["lyrics_body"].(string)
-		lyric = strings.Replace(lyric, "******* This Lyrics is NOT for Commercial use *******", "", -1)
-		lyric = strings.Replace(lyric, "\n", ". ", -1)
-		rttr.Track.Lyrics = lyric
+			lyric, _ := lyrics["lyrics_body"].(string)
+			lyric = strings.Replace(lyric, "******* This Lyrics is NOT for Commercial use *******", "", -1)
+			lyric = strings.Replace(lyric, "\n", ". ", -1)
+			rttr.Track.Lyrics = lyric
 
-		log.Printf("processed lyrics data")
+			log.Printf("processed lyrics data")
+		}
 	} else {
 		return errors.New("error while processing lyrics vendor API data")
 	}
@@ -431,7 +478,7 @@ func fetchTrackSuggestions(reqCtx context.Context, track, artist string) (utils.
 func processTrackSuggestionsData(data utils.Data, rttr *RegionalTopTrackResponse) error {
 	if st, ok := data["similartracks"]; ok {
 		if similarTracks, ok := st.(map[string]interface{}); ok {
-			tracks := similarTracks["track"].([]interface{})
+			tracks, _ := similarTracks["track"].([]interface{})
 			rttr.TrackSuggestion = make([]TrackSuggestion, 0)
 			if len(tracks) == 0 {
 				log.Printf("received empty track suggestions data")
@@ -439,20 +486,23 @@ func processTrackSuggestionsData(data utils.Data, rttr *RegionalTopTrackResponse
 				return nil
 			}
 			for _, track := range tracks {
-				val := track.(map[string]interface{})
+				val, ok := track.(map[string]interface{})
+				if !ok {
+					errors.New("error while processing track vendor API data")
+				}
 				trackSuggestion := new(TrackSuggestion)
 
-				trackSuggestion.Name = val["name"].(string)
-				trackSuggestion.URL = val["url"].(string)
-				trackSuggestion.Match = val["match"].(float64)
-				trackSuggestion.Duration = val["duration"].(float64)
+				trackSuggestion.Name, _ = val["name"].(string)
+				trackSuggestion.URL, _ = val["url"].(string)
+				trackSuggestion.Match, _ = val["match"].(float64)
+				trackSuggestion.Duration, _ = val["duration"].(float64)
 
-				trackSuggestion.PlayCount = val["playcount"].(float64)
+				trackSuggestion.PlayCount, _ = val["playcount"].(float64)
 
-				artist := val["artist"].(map[string]interface{})
-
-				trackSuggestion.ArtistInfo.Name = artist["name"].(string)
-				trackSuggestion.ArtistInfo.URL = artist["url"].(string)
+				if artist, ok := val["artist"].(map[string]interface{}); ok {
+					trackSuggestion.ArtistInfo.Name, _ = artist["name"].(string)
+					trackSuggestion.ArtistInfo.URL, _ = artist["url"].(string)
+				}
 
 				rttr.TrackSuggestion = append(rttr.TrackSuggestion, *trackSuggestion)
 			}
@@ -506,7 +556,7 @@ func (f *RegionalTopTrackForm) Valid() error {
 		if country, ok := countriesMap[strings.ToLower(f.Country)]; ok {
 			f.Country = country
 		} else {
-			errMsg += "`country` not found in our database. Please check the country input param, it should follow the ISO 3166-1-Alpha-2 code"
+			errMsg += "`country` not found in our database. Please check the country input param, it should follow the ISO 3166-1-Alpha-2 code format"
 		}
 	}
 

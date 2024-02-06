@@ -20,7 +20,7 @@ func (c *TopTrackController) UpdateComponent(component interface{}) {
 	c.Component, _ = component.(track.TopTrack)
 }
 
-// GetRegionalTopTrack is used to retrieve the details, lyrics, and artists of the top track based on the given country or city. It also provides suggestions based on the retrieved track and artist.
+// GetRegionalTopTrack is used to retrieve the details, lyrics, and artists of the top track based on the given country. It also provides suggestions based on the retrieved track and artist.
 // @router	/ [post]
 func (c *TopTrackController) GetRegionalTopTrack() {
 	var d *track.RegionalTopTrackResponse
