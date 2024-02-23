@@ -488,7 +488,7 @@ func processTrackSuggestionsData(data utils.Data, rttr *RegionalTopTrackResponse
 			for _, track := range tracks {
 				val, ok := track.(map[string]interface{})
 				if !ok {
-					errors.New("error while processing track vendor API data")
+					return errors.New("error while processing track vendor API data")
 				}
 				trackSuggestion := new(TrackSuggestion)
 
@@ -564,7 +564,7 @@ func (f *RegionalTopTrackForm) Valid() error {
 		if errMsg != "" {
 			errMsg += "\n"
 		}
-		errMsg += "`use_cache parameter is invalid"
+		errMsg += "`use_cache` parameter is invalid"
 	}
 
 	p := bluemonday.UGCPolicy()

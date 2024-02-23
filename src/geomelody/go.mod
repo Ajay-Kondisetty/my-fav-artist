@@ -7,6 +7,7 @@ require (
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/joho/godotenv v1.5.1
 	github.com/microcosm-cc/bluemonday v1.0.26
+	github.com/stretchr/testify v1.8.4
 	golang.org/x/net v0.20.0
 )
 
@@ -25,7 +26,6 @@ require (
 	github.com/prometheus/common v0.46.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
 	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect

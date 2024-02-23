@@ -94,6 +94,11 @@ func GetExternalAPIResponse(req ExternalRequest, reqCtx context.Context) (contex
 
 // Do method execute the ExternalRequest.
 func (r *ExternalRequest) Do() (*http.Response, error) {
+	r.GetMockHeadersFromContext()
+	if _, ok := r.Headers["x-mock-api"]; ok {
+		return r.DoMock()
+	}
+
 	var resp *http.Response
 	body, err := r.getRequestBody()
 	if err != nil {
