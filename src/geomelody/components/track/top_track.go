@@ -28,6 +28,7 @@ type TopTrack interface {
 	GetRegionalTopTrack(*RegionalTopTrackForm) (*RegionalTopTrackResponse, error)
 	GetRegionalTopTrackForm() *RegionalTopTrackForm
 	GetComponentAppError() *utils.AppError
+	SetComponentAppError(int, error)
 }
 
 type RegionalTopTrackForm struct {
@@ -97,7 +98,7 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 	resp := new(RegionalTopTrackResponse)
 	var err error
 	var data utils.Data
-	if err := form.Valid(); err != nil {
+	if err = form.Valid(); err != nil {
 		ttc.AppError = &utils.AppError{
 			Status: http.StatusBadRequest,
 			Error:  err,
@@ -133,7 +134,7 @@ func (ttc *TopTrackComponent) GetRegionalTopTrack(form *RegionalTopTrackForm) (*
 
 func isRespInCache(form *RegionalTopTrackForm, redisConn redis.Conn, resp *RegionalTopTrackResponse) bool {
 	if form.UseCache {
-		dataStr, err := utils.RedisGetData(redisConn, form.Country)
+		dataStr, err := utils.GetData(redisConn, form.Country)
 		if err != nil {
 			log.Printf("data not found in cache")
 		} else if dataBytes, err := base64.StdEncoding.DecodeString(dataStr); err != nil {
@@ -155,7 +156,7 @@ func checkAndCacheResp(form *RegionalTopTrackForm, redisConn redis.Conn, resp *R
 			log.Printf("error marshaling data to store in cache")
 		} else if respStr := base64.StdEncoding.EncodeToString(respBytes); respStr != "" {
 			ttl, _ := strconv.Atoi(constants.REDIS_DEFAULT_EXPIRY)
-			if status, err := utils.RedisSetData(redisConn, form.Country, respStr, ttl); err != nil || status {
+			if status, err := utils.SetData(redisConn, form.Country, respStr, ttl); err != nil || !status {
 				log.Printf("error setting data in cache")
 			} else {
 				log.Printf("data succesfully stored in cache")
@@ -518,7 +519,7 @@ func processTrackSuggestionsData(data utils.Data, rttr *RegionalTopTrackResponse
 	return nil
 }
 
-// GetRegionalTopTrackForm is used to return new regional top track form instance.
+// GetRegionalTopTrackForm is used to create a new regional top track form instance.
 // It returns regional top track form instance.
 func (ttc *TopTrackComponent) GetRegionalTopTrackForm() *RegionalTopTrackForm {
 	return new(RegionalTopTrackForm)

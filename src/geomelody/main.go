@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	// Generated using http://patorjk.com/software/taag/#p=display&f=Graffiti
 	log.Println(`
                                     .__             .___      
    ____   ____  ____   _____   ____ |  |   ____   __| _/__.__.

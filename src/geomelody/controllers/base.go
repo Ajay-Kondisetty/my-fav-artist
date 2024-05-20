@@ -29,7 +29,7 @@ type BaseController struct {
 func (c *BaseController) Prepare() {
 	requestCtx := c.Ctx.Request.Context()
 	c.ReqCtx = requestCtx
-	conn, err := utils.RedisConn()
+	conn, err := utils.Conn()
 	if err != nil {
 		c.Error(err)
 	} else {
